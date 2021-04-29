@@ -20,10 +20,31 @@ use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 
+/// A mapping from a file descriptor in the parent to a file descriptor in the child, to be applied
+/// when spawning a child process.
+///
+/// The parent_fd must be kept open until after the child is spawned.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FdMapping {
     pub parent_fd: RawFd,
     pub child_fd: RawFd,
+}
+
+/// Extension to add file descriptor mappings to a [`Command`].
+pub trait CommandFdExt {
+    /// Adds the given set of file descriptor to the command.
+    ///
+    /// Calling this more than once on the same command may result in unexpected behaviour.
+    fn fd_mappings(&mut self, mappings: Vec<FdMapping>);
+}
+
+impl CommandFdExt for Command {
+    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) {
+        // Register the callback to apply the mappings after forking but before execing.
+        unsafe {
+            self.pre_exec(move || map_fds(&mappings));
+        }
+    }
 }
 
 fn map_fds(mappings: &[FdMapping]) -> io::Result<()> {
@@ -72,22 +93,11 @@ fn map_fds(mappings: &[FdMapping]) -> io::Result<()> {
     Ok(())
 }
 
+/// Convert a [`nix::Error`] to a [`std::io::Error`].
 fn nix_to_io_error(error: nix::Error) -> io::Error {
     if let nix::Error::Sys(errno) = error {
         io::Error::from_raw_os_error(errno as i32)
     } else {
         io::Error::new(ErrorKind::Other, error)
-    }
-}
-
-pub trait CommandFdExt {
-    fn fd_mappings(&mut self, mappings: Vec<FdMapping>);
-}
-
-impl CommandFdExt for Command {
-    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) {
-        unsafe {
-            self.pre_exec(move || map_fds(&mappings));
-        }
     }
 }
