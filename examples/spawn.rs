@@ -20,6 +20,7 @@ use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
 
+/// Print out a list of all open file descriptors.
 fn list_fds() {
     let dir = read_dir("/proc/self/fd").unwrap();
     for entry in dir {
@@ -32,32 +33,37 @@ fn list_fds() {
 fn main() {
     list_fds();
 
+    // Open a file.
     let file = File::open("Cargo.toml").unwrap();
     println!("File: {:?}", file);
     list_fds();
 
+    // Prepare to run `ls -l /proc/self/fd` with some FDs mapped.
     let mut command = Command::new("ls");
     command.arg("-l").arg("/proc/self/fd");
-    let mappings = vec![
-        FdMapping {
-            parent_fd: file.as_raw_fd(),
-            child_fd: 3,
-        },
-        FdMapping {
-            parent_fd: 0,
-            child_fd: 5,
-        },
-    ];
-    command.fd_mappings(mappings).unwrap();
+    command
+        .fd_mappings(vec![
+            // Map `file` as FD 3 in the child process.
+            FdMapping {
+                parent_fd: file.as_raw_fd(),
+                child_fd: 3,
+            },
+            // Map this process's stdin as FD 5 in the child process.
+            FdMapping {
+                parent_fd: 0,
+                child_fd: 5,
+            },
+        ])
+        .unwrap();
     unsafe {
         command.pre_exec(move || {
-            let fd = file.as_raw_fd();
-            println!("pre_exec, file {:?}, fd {}", file, fd);
+            println!("pre_exec");
             list_fds();
             Ok(())
         });
     }
 
+    // Spawn the child process.
     println!("Spawning command");
     let mut child = command.spawn().unwrap();
     sleep(Duration::from_millis(100));
