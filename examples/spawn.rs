@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use command_fds::{set_mappings, FdMapping};
+use command_fds::{CommandFdExt, FdMapping};
 use std::fs::{read_dir, read_link, File};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::process::CommandExt;
@@ -48,7 +48,7 @@ fn main() {
             new_fd: 5,
         },
     ];
-    set_mappings(&mut command, mappings);
+    command.fd_mappings(mappings);
     unsafe {
         command.pre_exec(move || {
             let fd = file.as_raw_fd();

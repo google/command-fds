@@ -79,11 +79,14 @@ fn nix_to_io_error(error: nix::Error) -> io::Error {
     }
 }
 
-pub fn set_mappings(command: &mut Command, mappings: Vec<FdMapping>) {
-    unsafe {
-        command.pre_exec(move || {
-            map_fds(&mappings)?;
-            Ok(())
-        });
+pub trait CommandFdExt {
+    fn fd_mappings(&mut self, mappings: Vec<FdMapping>);
+}
+
+impl CommandFdExt for Command {
+    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) {
+        unsafe {
+            self.pre_exec(move || map_fds(&mappings));
+        }
     }
 }
