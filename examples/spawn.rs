@@ -32,7 +32,7 @@ fn list_fds() {
 fn main() {
     list_fds();
 
-    let file = File::open("file.txt").unwrap();
+    let file = File::open("Cargo.toml").unwrap();
     println!("File: {:?}", file);
     list_fds();
 
