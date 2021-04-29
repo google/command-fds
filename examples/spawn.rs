@@ -40,12 +40,12 @@ fn main() {
     command.arg("-l").arg("/proc/self/fd");
     let mappings = vec![
         FdMapping {
-            old_fd: file.as_raw_fd(),
-            new_fd: 3,
+            parent_fd: file.as_raw_fd(),
+            child_fd: 3,
         },
         FdMapping {
-            old_fd: 0,
-            new_fd: 5,
+            parent_fd: 0,
+            child_fd: 5,
         },
     ];
     command.fd_mappings(mappings);

@@ -22,8 +22,8 @@ use std::process::Command;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FdMapping {
-    pub old_fd: RawFd,
-    pub new_fd: RawFd,
+    pub parent_fd: RawFd,
+    pub child_fd: RawFd,
 }
 
 fn map_fds(mappings: &[FdMapping]) -> io::Result<()> {
@@ -32,27 +32,28 @@ fn map_fds(mappings: &[FdMapping]) -> io::Result<()> {
         return Ok(());
     }
 
-    // Find the first FD which is higher than any old or new FD in the mapping, so we can safely use
-    // it and higher FDs as temporary FDs. There may be other files open with these FDs, so we still
-    // need to ensure we don't conflict with them.
+    // Find the first FD which is higher than any parent or child FD in the mapping, so we can
+    // safely use it and higher FDs as temporary FDs. There may be other files open with these FDs,
+    // so we still need to ensure we don't conflict with them.
     let first_safe_fd = mappings
         .iter()
-        .map(|mapping| max(mapping.old_fd, mapping.new_fd))
+        .map(|mapping| max(mapping.parent_fd, mapping.child_fd))
         .max()
         .unwrap()
         + 1;
 
-    // If any old FDs conflict with new FDs, then first duplicate them to a temporary FD which is
-    // clear of either range.
-    let new_fds: Vec<RawFd> = mappings.iter().map(|mapping| mapping.new_fd).collect();
+    // If any parent FDs conflict with child FDs, then first duplicate them to a temporary FD which
+    // is clear of either range.
+    let child_fds: Vec<RawFd> = mappings.iter().map(|mapping| mapping.child_fd).collect();
     let mappings = mappings
         .into_iter()
         .map(|mapping| {
-            Ok(if new_fds.contains(&mapping.old_fd) {
-                let temporary_fd = fcntl(mapping.old_fd, FcntlArg::F_DUPFD_CLOEXEC(first_safe_fd))?;
+            Ok(if child_fds.contains(&mapping.parent_fd) {
+                let temporary_fd =
+                    fcntl(mapping.parent_fd, FcntlArg::F_DUPFD_CLOEXEC(first_safe_fd))?;
                 FdMapping {
-                    old_fd: temporary_fd,
-                    new_fd: mapping.new_fd,
+                    parent_fd: temporary_fd,
+                    child_fd: mapping.child_fd,
                 }
             } else {
                 mapping.to_owned()
@@ -61,11 +62,11 @@ fn map_fds(mappings: &[FdMapping]) -> io::Result<()> {
         .collect::<nix::Result<Vec<_>>>()
         .map_err(nix_to_io_error)?;
 
-    // Now we can actually duplicate FDs to the desired new FDs.
+    // Now we can actually duplicate FDs to the desired child FDs.
     for mapping in mappings {
-        // This closes new_fd if it is already open as something else, and clears the FD_CLOEXEC
-        // flag on new_fd.
-        dup2(mapping.old_fd, mapping.new_fd).map_err(nix_to_io_error)?;
+        // This closes child_fd if it is already open as something else, and clears the FD_CLOEXEC
+        // flag on child_fd.
+        dup2(mapping.parent_fd, mapping.child_fd).map_err(nix_to_io_error)?;
     }
 
     Ok(())
