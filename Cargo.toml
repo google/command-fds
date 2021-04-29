@@ -1,5 +1,5 @@
 [package]
-name = "fdtest"
+name = "command_fds"
 version = "0.1.0"
 edition = "2018"
 

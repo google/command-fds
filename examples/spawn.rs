@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod mapping;
-
-use mapping::{set_mappings, FdMapping};
+use command_fds::{set_mappings, FdMapping};
 use std::fs::{read_dir, read_link, File};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::process::CommandExt;
