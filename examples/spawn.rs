@@ -48,7 +48,7 @@ fn main() {
             child_fd: 5,
         },
     ];
-    command.fd_mappings(mappings);
+    command.fd_mappings(mappings).unwrap();
     unsafe {
         command.pre_exec(move || {
             let fd = file.as_raw_fd();

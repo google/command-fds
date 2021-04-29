@@ -19,6 +19,7 @@ use std::io::{self, ErrorKind};
 use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
+use thiserror::Error;
 
 /// A mapping from a file descriptor in the parent to a file descriptor in the child, to be applied
 /// when spawning a child process.
@@ -30,20 +31,35 @@ pub struct FdMapping {
     pub child_fd: RawFd,
 }
 
+/// Error setting up FD mappings, because there were two or more mappings for the same child FD.
+#[derive(Copy, Clone, Debug, Eq, Error, PartialEq)]
+#[error("Two or more mappings for the same child FD")]
+pub struct FdMappingCollision;
+
 /// Extension to add file descriptor mappings to a [`Command`].
 pub trait CommandFdExt {
     /// Adds the given set of file descriptor to the command.
     ///
     /// Calling this more than once on the same command may result in unexpected behaviour.
-    fn fd_mappings(&mut self, mappings: Vec<FdMapping>);
+    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<(), FdMappingCollision>;
 }
 
 impl CommandFdExt for Command {
-    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) {
+    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<(), FdMappingCollision> {
+        // Validate that there are no conflicting mappings to the same child FD.
+        let mut child_fds: Vec<RawFd> = mappings.iter().map(|mapping| mapping.child_fd).collect();
+        child_fds.sort_unstable();
+        child_fds.dedup();
+        if child_fds.len() != mappings.len() {
+            return Err(FdMappingCollision);
+        }
+
         // Register the callback to apply the mappings after forking but before execing.
         unsafe {
             self.pre_exec(move || map_fds(&mappings));
         }
+
+        Ok(())
     }
 }
 
