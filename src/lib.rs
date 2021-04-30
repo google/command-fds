@@ -119,7 +119,7 @@ fn map_fds(mappings: &[FdMapping]) -> io::Result<()> {
     // is clear of either range.
     let child_fds: Vec<RawFd> = mappings.iter().map(|mapping| mapping.child_fd).collect();
     let mappings = mappings
-        .into_iter()
+        .iter()
         .map(|mapping| {
             Ok(if child_fds.contains(&mapping.parent_fd) {
                 let temporary_fd =
