@@ -153,3 +153,141 @@ fn nix_to_io_error(error: nix::Error) -> io::Error {
         io::Error::new(ErrorKind::Other, error)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::fs::File;
+    use std::os::unix::io::AsRawFd;
+    use std::process::Output;
+    use std::str;
+
+    #[test]
+    fn conflicting_mappings() {
+        let mut command = Command::new("ls");
+
+        // The same mapping can't be included twice.
+        assert_eq!(
+            command.fd_mappings(vec![
+                FdMapping {
+                    child_fd: 4,
+                    parent_fd: 5,
+                },
+                FdMapping {
+                    child_fd: 4,
+                    parent_fd: 5,
+                },
+            ]),
+            Err(FdMappingCollision)
+        );
+
+        // Mapping two different FDs to the same FD isn't allowed either.
+        assert_eq!(
+            command.fd_mappings(vec![
+                FdMapping {
+                    child_fd: 4,
+                    parent_fd: 5,
+                },
+                FdMapping {
+                    child_fd: 4,
+                    parent_fd: 6,
+                },
+            ]),
+            Err(FdMappingCollision)
+        );
+    }
+
+    #[test]
+    fn no_mappings() {
+        let mut command = Command::new("ls");
+        command.arg("/proc/self/fd");
+
+        assert_eq!(command.fd_mappings(vec![]), Ok(()));
+
+        let output = command.output().unwrap();
+        expect_fds(&output, &[0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn one_mapping() {
+        let mut command = Command::new("ls");
+        command.arg("/proc/self/fd");
+
+        let file = File::open("testdata/file1.txt").unwrap();
+        // Map the file an otherwise unused FD.
+        assert_eq!(
+            command.fd_mappings(vec![FdMapping {
+                parent_fd: file.as_raw_fd(),
+                child_fd: 5,
+            },]),
+            Ok(())
+        );
+
+        let output = command.output().unwrap();
+        expect_fds(&output, &[0, 1, 2, 3, 5]);
+    }
+
+    #[test]
+    fn swap_mappings() {
+        let mut command = Command::new("ls");
+        command.arg("/proc/self/fd");
+
+        let file1 = File::open("testdata/file1.txt").unwrap();
+        let file2 = File::open("testdata/file2.txt").unwrap();
+        let fd1 = file1.as_raw_fd();
+        let fd2 = file2.as_raw_fd();
+        // Map files to each other's FDs, to ensure that the temporary FD logic works.
+        assert_eq!(
+            command.fd_mappings(vec![
+                FdMapping {
+                    parent_fd: fd1,
+                    child_fd: fd2,
+                },
+                FdMapping {
+                    parent_fd: fd2,
+                    child_fd: fd1,
+                },
+            ]),
+            Ok(())
+        );
+
+        let output = command.output().unwrap();
+        expect_fds(&output, &[0, 1, 2, 3, fd1, fd2]);
+    }
+
+    #[test]
+    fn map_stdin() {
+        let mut command = Command::new("cat");
+
+        let file = File::open("testdata/file1.txt").unwrap();
+        // Map the file to stdin.
+        assert_eq!(
+            command.fd_mappings(vec![FdMapping {
+                parent_fd: file.as_raw_fd(),
+                child_fd: 0,
+            },]),
+            Ok(())
+        );
+
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"test 1");
+    }
+
+    /// Parse the output of ls into a set of filenames
+    fn parse_ls_output(output: &[u8]) -> HashSet<String> {
+        str::from_utf8(output)
+            .unwrap()
+            .split_terminator("\n")
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Check that the output of `ls /proc/self/fd` contains the expected set of FDs.
+    fn expect_fds(output: &Output, expected_fds: &[RawFd]) {
+        assert!(output.status.success());
+        let expected_fds: HashSet<String> = expected_fds.iter().map(RawFd::to_string).collect();
+        assert_eq!(parse_ls_output(&output.stdout), expected_fds);
+    }
+}
