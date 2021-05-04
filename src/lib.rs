@@ -163,10 +163,13 @@ mod tests {
     use std::os::unix::io::AsRawFd;
     use std::process::Output;
     use std::str;
+    use std::sync::Once;
+
+    static SETUP: Once = Once::new();
 
     #[test]
     fn conflicting_mappings() {
-        close_excess_fds();
+        setup();
 
         let mut command = Command::new("ls");
 
@@ -203,7 +206,7 @@ mod tests {
 
     #[test]
     fn no_mappings() {
-        close_excess_fds();
+        setup();
 
         let mut command = Command::new("ls");
         command.arg("/proc/self/fd");
@@ -211,12 +214,12 @@ mod tests {
         assert_eq!(command.fd_mappings(vec![]), Ok(()));
 
         let output = command.output().unwrap();
-        expect_fds(&output, &[0, 1, 2, 3]);
+        expect_fds(&output, &[0, 1, 2, 3], 0);
     }
 
     #[test]
     fn one_mapping() {
-        close_excess_fds();
+        setup();
 
         let mut command = Command::new("ls");
         command.arg("/proc/self/fd");
@@ -232,12 +235,12 @@ mod tests {
         );
 
         let output = command.output().unwrap();
-        expect_fds(&output, &[0, 1, 2, 3, 5]);
+        expect_fds(&output, &[0, 1, 2, 3, 5], 0);
     }
 
     #[test]
     fn swap_mappings() {
-        close_excess_fds();
+        setup();
 
         let mut command = Command::new("ls");
         command.arg("/proc/self/fd");
@@ -262,12 +265,14 @@ mod tests {
         );
 
         let output = command.output().unwrap();
-        expect_fds(&output, &[0, 1, 2, 3, fd1, fd2]);
+        // Expect one more Fd for the /proc/self/fd directory. We can't predict what number it will
+        // be assigned, because 3 might or might not be taken already by fd1 or fd2.
+        expect_fds(&output, &[0, 1, 2, fd1, fd2], 1);
     }
 
     #[test]
     fn map_stdin() {
-        close_excess_fds();
+        setup();
 
         let mut command = Command::new("cat");
 
@@ -295,11 +300,22 @@ mod tests {
             .collect()
     }
 
-    /// Check that the output of `ls /proc/self/fd` contains the expected set of FDs.
-    fn expect_fds(output: &Output, expected_fds: &[RawFd]) {
+    /// Check that the output of `ls /proc/self/fd` contains the expected set of FDs, plus exactly
+    /// `extra` extra FDs.
+    fn expect_fds(output: &Output, expected_fds: &[RawFd], extra: usize) {
         assert!(output.status.success());
         let expected_fds: HashSet<String> = expected_fds.iter().map(RawFd::to_string).collect();
-        assert_eq!(parse_ls_output(&output.stdout), expected_fds);
+        let fds = parse_ls_output(&output.stdout);
+        if extra == 0 {
+            assert_eq!(fds, expected_fds);
+        } else {
+            assert!(expected_fds.is_subset(&fds));
+            assert_eq!(fds.len(), expected_fds.len() + extra);
+        }
+    }
+
+    fn setup() {
+        SETUP.call_once(close_excess_fds);
     }
 
     /// Close all file descriptors apart from stdin, stdout and stderr.
