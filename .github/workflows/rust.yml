@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Check FDs
+        run: ls -l /proc/self/fd
       - name: Build
         run: cargo build
       - name: Run tests
