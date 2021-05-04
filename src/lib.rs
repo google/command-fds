@@ -157,14 +157,17 @@ fn nix_to_io_error(error: nix::Error) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nix::unistd::close;
     use std::collections::HashSet;
-    use std::fs::File;
+    use std::fs::{read_dir, File};
     use std::os::unix::io::AsRawFd;
     use std::process::Output;
     use std::str;
 
     #[test]
     fn conflicting_mappings() {
+        close_excess_fds();
+
         let mut command = Command::new("ls");
 
         // The same mapping can't be included twice.
@@ -200,6 +203,8 @@ mod tests {
 
     #[test]
     fn no_mappings() {
+        close_excess_fds();
+
         let mut command = Command::new("ls");
         command.arg("/proc/self/fd");
 
@@ -211,6 +216,8 @@ mod tests {
 
     #[test]
     fn one_mapping() {
+        close_excess_fds();
+
         let mut command = Command::new("ls");
         command.arg("/proc/self/fd");
 
@@ -230,6 +237,8 @@ mod tests {
 
     #[test]
     fn swap_mappings() {
+        close_excess_fds();
+
         let mut command = Command::new("ls");
         command.arg("/proc/self/fd");
 
@@ -258,6 +267,8 @@ mod tests {
 
     #[test]
     fn map_stdin() {
+        close_excess_fds();
+
         let mut command = Command::new("cat");
 
         let file = File::open("testdata/file1.txt").unwrap();
@@ -289,5 +300,19 @@ mod tests {
         assert!(output.status.success());
         let expected_fds: HashSet<String> = expected_fds.iter().map(RawFd::to_string).collect();
         assert_eq!(parse_ls_output(&output.stdout), expected_fds);
+    }
+
+    /// Close all file descriptors apart from stdin, stdout and stderr.
+    ///
+    /// This is necessary because GitHub Actions opens a bunch of others for some reason.
+    fn close_excess_fds() {
+        let dir = read_dir("/proc/self/fd").unwrap();
+        for entry in dir {
+            let entry = entry.unwrap();
+            let fd: RawFd = entry.file_name().to_str().unwrap().parse().unwrap();
+            if fd > 3 {
+                close(fd).unwrap();
+            }
+        }
     }
 }
