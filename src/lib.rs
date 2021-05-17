@@ -74,7 +74,7 @@ pub struct FdMappingCollision;
 
 /// Extension to add file descriptor mappings to a [`Command`].
 pub trait CommandFdExt {
-    /// Adds the given set of file descriptor to the command.
+    /// Adds the given set of file descriptors to the command.
     ///
     /// Calling this more than once on the same command may result in unexpected behaviour.
     fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<&mut Self, FdMappingCollision>;
