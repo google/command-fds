@@ -48,7 +48,7 @@
 //! child.wait().unwrap();
 //! ```
 
-use nix::fcntl::{fcntl, FcntlArg};
+use nix::fcntl::{fcntl, FcntlArg, FdFlag};
 use nix::unistd::dup2;
 use std::cmp::max;
 use std::io::{self, ErrorKind};
@@ -116,30 +116,39 @@ fn map_fds(mappings: &[FdMapping]) -> io::Result<()> {
         + 1;
 
     // If any parent FDs conflict with child FDs, then first duplicate them to a temporary FD which
-    // is clear of either range.
+    // is clear of either range. Mappings to the same FD are fine though, we can handle them by just
+    // removing the FD_CLOEXEC flag.
     let child_fds: Vec<RawFd> = mappings.iter().map(|mapping| mapping.child_fd).collect();
     let mappings = mappings
         .iter()
         .map(|mapping| {
-            Ok(if child_fds.contains(&mapping.parent_fd) {
-                let temporary_fd =
-                    fcntl(mapping.parent_fd, FcntlArg::F_DUPFD_CLOEXEC(first_safe_fd))?;
-                FdMapping {
-                    parent_fd: temporary_fd,
-                    child_fd: mapping.child_fd,
-                }
-            } else {
-                mapping.to_owned()
-            })
+            Ok(
+                if child_fds.contains(&mapping.parent_fd) && mapping.parent_fd != mapping.child_fd {
+                    let temporary_fd =
+                        fcntl(mapping.parent_fd, FcntlArg::F_DUPFD_CLOEXEC(first_safe_fd))?;
+                    FdMapping {
+                        parent_fd: temporary_fd,
+                        child_fd: mapping.child_fd,
+                    }
+                } else {
+                    mapping.to_owned()
+                },
+            )
         })
         .collect::<nix::Result<Vec<_>>>()
         .map_err(nix_to_io_error)?;
 
     // Now we can actually duplicate FDs to the desired child FDs.
     for mapping in mappings {
-        // This closes child_fd if it is already open as something else, and clears the FD_CLOEXEC
-        // flag on child_fd.
-        dup2(mapping.parent_fd, mapping.child_fd).map_err(nix_to_io_error)?;
+        if mapping.child_fd == mapping.parent_fd {
+            // Remove the FD_CLOEXEC flag, so the FD will be kept open when exec is called for the child.
+            fcntl(mapping.parent_fd, FcntlArg::F_SETFD(FdFlag::empty()))
+                .map_err(nix_to_io_error)?;
+        } else {
+            // This closes child_fd if it is already open as something else, and clears the FD_CLOEXEC
+            // flag on child_fd.
+            dup2(mapping.parent_fd, mapping.child_fd).map_err(nix_to_io_error)?;
+        }
     }
 
     Ok(())
@@ -268,6 +277,34 @@ mod tests {
         // Expect one more Fd for the /proc/self/fd directory. We can't predict what number it will
         // be assigned, because 3 might or might not be taken already by fd1 or fd2.
         expect_fds(&output, &[0, 1, 2, fd1, fd2], 1);
+    }
+
+    #[test]
+    fn one_to_one_mapping() {
+        setup();
+
+        let mut command = Command::new("ls");
+        command.arg("/proc/self/fd");
+
+        let file1 = File::open("testdata/file1.txt").unwrap();
+        let file2 = File::open("testdata/file2.txt").unwrap();
+        let fd1 = file1.as_raw_fd();
+        // Map files to each other's FDs, to ensure that the temporary FD logic works.
+        assert_eq!(
+            command.fd_mappings(vec![FdMapping {
+                parent_fd: fd1,
+                child_fd: fd1,
+            }]),
+            Ok(())
+        );
+
+        let output = command.output().unwrap();
+        // Expect one more Fd for the /proc/self/fd directory. We can't predict what number it will
+        // be assigned, because 3 might or might not be taken already by fd1 or fd2.
+        expect_fds(&output, &[0, 1, 2, fd1], 1);
+
+        // Keep file2 open until the end, to ensure that it's not passed to the child.
+        drop(file2);
     }
 
     #[test]
