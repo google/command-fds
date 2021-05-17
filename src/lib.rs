@@ -141,12 +141,13 @@ fn map_fds(mappings: &[FdMapping]) -> io::Result<()> {
     // Now we can actually duplicate FDs to the desired child FDs.
     for mapping in mappings {
         if mapping.child_fd == mapping.parent_fd {
-            // Remove the FD_CLOEXEC flag, so the FD will be kept open when exec is called for the child.
+            // Remove the FD_CLOEXEC flag, so the FD will be kept open when exec is called for the
+            // child.
             fcntl(mapping.parent_fd, FcntlArg::F_SETFD(FdFlag::empty()))
                 .map_err(nix_to_io_error)?;
         } else {
-            // This closes child_fd if it is already open as something else, and clears the FD_CLOEXEC
-            // flag on child_fd.
+            // This closes child_fd if it is already open as something else, and clears the
+            // FD_CLOEXEC flag on child_fd.
             dup2(mapping.parent_fd, mapping.child_fd).map_err(nix_to_io_error)?;
         }
     }
