@@ -103,6 +103,7 @@ impl CommandFdExt for Command {
     }
 }
 
+// This function must not do any allocation, as it is called from the pre_exec hook.
 fn map_fds(mappings: &mut [FdMapping], child_fds: &[RawFd]) -> io::Result<()> {
     if mappings.is_empty() {
         // No need to do anything, and finding first_unused_fd would fail.
