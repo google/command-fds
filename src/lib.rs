@@ -77,11 +77,11 @@ pub trait CommandFdExt {
     /// Adds the given set of file descriptor to the command.
     ///
     /// Calling this more than once on the same command may result in unexpected behaviour.
-    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<(), FdMappingCollision>;
+    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<&mut Self, FdMappingCollision>;
 }
 
 impl CommandFdExt for Command {
-    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<(), FdMappingCollision> {
+    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<&mut Self, FdMappingCollision> {
         // Validate that there are no conflicting mappings to the same child FD.
         let mut child_fds: Vec<RawFd> = mappings.iter().map(|mapping| mapping.child_fd).collect();
         child_fds.sort_unstable();
@@ -95,7 +95,7 @@ impl CommandFdExt for Command {
             self.pre_exec(move || map_fds(&mappings));
         }
 
-        Ok(())
+        Ok(self)
     }
 }
 
@@ -184,8 +184,8 @@ mod tests {
         let mut command = Command::new("ls");
 
         // The same mapping can't be included twice.
-        assert_eq!(
-            command.fd_mappings(vec![
+        assert!(command
+            .fd_mappings(vec![
                 FdMapping {
                     child_fd: 4,
                     parent_fd: 5,
@@ -194,13 +194,12 @@ mod tests {
                     child_fd: 4,
                     parent_fd: 5,
                 },
-            ]),
-            Err(FdMappingCollision)
-        );
+            ])
+            .is_err());
 
         // Mapping two different FDs to the same FD isn't allowed either.
-        assert_eq!(
-            command.fd_mappings(vec![
+        assert!(command
+            .fd_mappings(vec![
                 FdMapping {
                     child_fd: 4,
                     parent_fd: 5,
@@ -209,9 +208,8 @@ mod tests {
                     child_fd: 4,
                     parent_fd: 6,
                 },
-            ]),
-            Err(FdMappingCollision)
-        );
+            ])
+            .is_err());
     }
 
     #[test]
@@ -221,7 +219,7 @@ mod tests {
         let mut command = Command::new("ls");
         command.arg("/proc/self/fd");
 
-        assert_eq!(command.fd_mappings(vec![]), Ok(()));
+        assert!(command.fd_mappings(vec![]).is_ok());
 
         let output = command.output().unwrap();
         expect_fds(&output, &[0, 1, 2, 3], 0);
@@ -236,13 +234,12 @@ mod tests {
 
         let file = File::open("testdata/file1.txt").unwrap();
         // Map the file an otherwise unused FD.
-        assert_eq!(
-            command.fd_mappings(vec![FdMapping {
+        assert!(command
+            .fd_mappings(vec![FdMapping {
                 parent_fd: file.as_raw_fd(),
                 child_fd: 5,
-            },]),
-            Ok(())
-        );
+            },])
+            .is_ok());
 
         let output = command.output().unwrap();
         expect_fds(&output, &[0, 1, 2, 3, 5], 0);
@@ -260,8 +257,8 @@ mod tests {
         let fd1 = file1.as_raw_fd();
         let fd2 = file2.as_raw_fd();
         // Map files to each other's FDs, to ensure that the temporary FD logic works.
-        assert_eq!(
-            command.fd_mappings(vec![
+        assert!(command
+            .fd_mappings(vec![
                 FdMapping {
                     parent_fd: fd1,
                     child_fd: fd2,
@@ -270,9 +267,8 @@ mod tests {
                     parent_fd: fd2,
                     child_fd: fd1,
                 },
-            ]),
-            Ok(())
-        );
+            ])
+            .is_ok(),);
 
         let output = command.output().unwrap();
         // Expect one more Fd for the /proc/self/fd directory. We can't predict what number it will
@@ -291,13 +287,12 @@ mod tests {
         let file2 = File::open("testdata/file2.txt").unwrap();
         let fd1 = file1.as_raw_fd();
         // Map files to each other's FDs, to ensure that the temporary FD logic works.
-        assert_eq!(
-            command.fd_mappings(vec![FdMapping {
+        assert!(command
+            .fd_mappings(vec![FdMapping {
                 parent_fd: fd1,
                 child_fd: fd1,
-            }]),
-            Ok(())
-        );
+            }])
+            .is_ok());
 
         let output = command.output().unwrap();
         // Expect one more Fd for the /proc/self/fd directory. We can't predict what number it will
@@ -316,13 +311,12 @@ mod tests {
 
         let file = File::open("testdata/file1.txt").unwrap();
         // Map the file to stdin.
-        assert_eq!(
-            command.fd_mappings(vec![FdMapping {
+        assert!(command
+            .fd_mappings(vec![FdMapping {
                 parent_fd: file.as_raw_fd(),
                 child_fd: 0,
-            },]),
-            Ok(())
-        );
+            },])
+            .is_ok());
 
         let output = command.output().unwrap();
         assert!(output.status.success());
