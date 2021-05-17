@@ -81,7 +81,10 @@ pub trait CommandFdExt {
 }
 
 impl CommandFdExt for Command {
-    fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<&mut Self, FdMappingCollision> {
+    fn fd_mappings(
+        &mut self,
+        mut mappings: Vec<FdMapping>,
+    ) -> Result<&mut Self, FdMappingCollision> {
         // Validate that there are no conflicting mappings to the same child FD.
         let mut child_fds: Vec<RawFd> = mappings.iter().map(|mapping| mapping.child_fd).collect();
         child_fds.sort_unstable();
@@ -91,15 +94,16 @@ impl CommandFdExt for Command {
         }
 
         // Register the callback to apply the mappings after forking but before execing.
+        // Safety: `map_fds` will not allocate, so it is safe to call from this hook.
         unsafe {
-            self.pre_exec(move || map_fds(&mappings));
+            self.pre_exec(move || map_fds(&mut mappings, &child_fds));
         }
 
         Ok(self)
     }
 }
 
-fn map_fds(mappings: &[FdMapping]) -> io::Result<()> {
+fn map_fds(mappings: &mut [FdMapping], child_fds: &[RawFd]) -> io::Result<()> {
     if mappings.is_empty() {
         // No need to do anything, and finding first_unused_fd would fail.
         return Ok(());
@@ -117,26 +121,13 @@ fn map_fds(mappings: &[FdMapping]) -> io::Result<()> {
 
     // If any parent FDs conflict with child FDs, then first duplicate them to a temporary FD which
     // is clear of either range. Mappings to the same FD are fine though, we can handle them by just
-    // removing the FD_CLOEXEC flag.
-    let child_fds: Vec<RawFd> = mappings.iter().map(|mapping| mapping.child_fd).collect();
-    let mappings = mappings
-        .iter()
-        .map(|mapping| {
-            Ok(
-                if child_fds.contains(&mapping.parent_fd) && mapping.parent_fd != mapping.child_fd {
-                    let temporary_fd =
-                        fcntl(mapping.parent_fd, FcntlArg::F_DUPFD_CLOEXEC(first_safe_fd))?;
-                    FdMapping {
-                        parent_fd: temporary_fd,
-                        child_fd: mapping.child_fd,
-                    }
-                } else {
-                    mapping.to_owned()
-                },
-            )
-        })
-        .collect::<nix::Result<Vec<_>>>()
-        .map_err(nix_to_io_error)?;
+    // removing the FD_CLOEXEC flag from the existing (parent) FD.
+    for mapping in mappings.iter_mut() {
+        if child_fds.contains(&mapping.parent_fd) && mapping.parent_fd != mapping.child_fd {
+            mapping.parent_fd = fcntl(mapping.parent_fd, FcntlArg::F_DUPFD_CLOEXEC(first_safe_fd))
+                .map_err(nix_to_io_error)?;
+        }
+    }
 
     // Now we can actually duplicate FDs to the desired child FDs.
     for mapping in mappings {
