@@ -78,6 +78,10 @@ pub trait CommandFdExt {
     ///
     /// Calling this more than once on the same command may result in unexpected behaviour.
     fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<&mut Self, FdMappingCollision>;
+
+    /// Adds the given set of file descriptors to be passed on to the child process when the command
+    /// is run.
+    fn preserved_fds(&mut self, fds: Vec<RawFd>) -> &mut Self;
 }
 
 impl CommandFdExt for Command {
@@ -100,6 +104,14 @@ impl CommandFdExt for Command {
         }
 
         Ok(self)
+    }
+
+    fn preserved_fds(&mut self, fds: Vec<RawFd>) -> &mut Self {
+        unsafe {
+            self.pre_exec(move || preserve_fds(&fds));
+        }
+
+        self
     }
 }
 
@@ -142,6 +154,16 @@ fn map_fds(mappings: &mut [FdMapping], child_fds: &[RawFd]) -> io::Result<()> {
             // FD_CLOEXEC flag on child_fd.
             dup2(mapping.parent_fd, mapping.child_fd).map_err(nix_to_io_error)?;
         }
+    }
+
+    Ok(())
+}
+
+fn preserve_fds(fds: &[RawFd]) -> io::Result<()> {
+    for fd in fds {
+        // Remove the FD_CLOEXEC flag, so the FD will be kept open when exec is called for the
+        // child.
+        fcntl(*fd, FcntlArg::F_SETFD(FdFlag::empty())).map_err(nix_to_io_error)?;
     }
 
     Ok(())
@@ -218,6 +240,19 @@ mod tests {
     }
 
     #[test]
+    fn none_preserved() {
+        setup();
+
+        let mut command = Command::new("ls");
+        command.arg("/proc/self/fd");
+
+        command.preserved_fds(vec![]);
+
+        let output = command.output().unwrap();
+        expect_fds(&output, &[0, 1, 2, 3], 0);
+    }
+
+    #[test]
     fn one_mapping() {
         setup();
 
@@ -235,6 +270,21 @@ mod tests {
 
         let output = command.output().unwrap();
         expect_fds(&output, &[0, 1, 2, 3, 5], 0);
+    }
+
+    #[test]
+    fn one_preserved() {
+        setup();
+
+        let mut command = Command::new("ls");
+        command.arg("/proc/self/fd");
+
+        let file = File::open("testdata/file1.txt").unwrap();
+        let file_fd = file.as_raw_fd();
+        command.preserved_fds(vec![file_fd]);
+
+        let output = command.output().unwrap();
+        expect_fds(&output, &[0, 1, 2, 3, file_fd], 0);
     }
 
     #[test]
