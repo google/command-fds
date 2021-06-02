@@ -76,7 +76,8 @@ pub struct FdMappingCollision;
 pub trait CommandFdExt {
     /// Adds the given set of file descriptors to the command.
     ///
-    /// Calling this more than once on the same command may result in unexpected behaviour.
+    /// Warning: Calling this more than once on the same command, or attempting to run the same
+    /// command more than once after calling this, may result in unexpected behaviour.
     fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<&mut Self, FdMappingCollision>;
 
     /// Adds the given set of file descriptors to be passed on to the child process when the command
@@ -100,6 +101,10 @@ impl CommandFdExt for Command {
         // Register the callback to apply the mappings after forking but before execing.
         // Safety: `map_fds` will not allocate, so it is safe to call from this hook.
         unsafe {
+            // If the command is run more than once, and hence this closure is called multiple
+            // times, then `mappings` may be in an incorrect state. It would be good if we could
+            // reset it to the initial state somehow, or use something else for saving the temporary
+            // mappings.
             self.pre_exec(move || map_fds(&mut mappings, &child_fds));
         }
 
