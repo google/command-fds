@@ -328,7 +328,7 @@ mod tests {
         let file1 = File::open("testdata/file1.txt").unwrap();
         let file2 = File::open("testdata/file2.txt").unwrap();
         let fd1 = file1.as_raw_fd();
-        // Map files to each other's FDs, to ensure that the temporary FD logic works.
+        // Map file1 to the same FD it currently has, to ensure the special case for that works.
         assert!(command
             .fd_mappings(vec![FdMapping {
                 parent_fd: fd1,
