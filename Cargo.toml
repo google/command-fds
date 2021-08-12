@@ -10,5 +10,5 @@ keywords = ["command", "process", "child", "subprocess", "fd"]
 categories = ["os::unix-apis"]
 
 [dependencies]
-nix = "0.20.0"
+nix = "0.22.0"
 thiserror = "1.0.24"

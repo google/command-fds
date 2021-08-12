@@ -51,7 +51,7 @@
 use nix::fcntl::{fcntl, FcntlArg, FdFlag};
 use nix::unistd::dup2;
 use std::cmp::max;
-use std::io::{self, ErrorKind};
+use std::io;
 use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
@@ -142,8 +142,7 @@ fn map_fds(mappings: &mut [FdMapping], child_fds: &[RawFd]) -> io::Result<()> {
     // removing the FD_CLOEXEC flag from the existing (parent) FD.
     for mapping in mappings.iter_mut() {
         if child_fds.contains(&mapping.parent_fd) && mapping.parent_fd != mapping.child_fd {
-            mapping.parent_fd = fcntl(mapping.parent_fd, FcntlArg::F_DUPFD_CLOEXEC(first_safe_fd))
-                .map_err(nix_to_io_error)?;
+            mapping.parent_fd = fcntl(mapping.parent_fd, FcntlArg::F_DUPFD_CLOEXEC(first_safe_fd))?;
         }
     }
 
@@ -152,12 +151,11 @@ fn map_fds(mappings: &mut [FdMapping], child_fds: &[RawFd]) -> io::Result<()> {
         if mapping.child_fd == mapping.parent_fd {
             // Remove the FD_CLOEXEC flag, so the FD will be kept open when exec is called for the
             // child.
-            fcntl(mapping.parent_fd, FcntlArg::F_SETFD(FdFlag::empty()))
-                .map_err(nix_to_io_error)?;
+            fcntl(mapping.parent_fd, FcntlArg::F_SETFD(FdFlag::empty()))?;
         } else {
             // This closes child_fd if it is already open as something else, and clears the
             // FD_CLOEXEC flag on child_fd.
-            dup2(mapping.parent_fd, mapping.child_fd).map_err(nix_to_io_error)?;
+            dup2(mapping.parent_fd, mapping.child_fd)?;
         }
     }
 
@@ -168,19 +166,10 @@ fn preserve_fds(fds: &[RawFd]) -> io::Result<()> {
     for fd in fds {
         // Remove the FD_CLOEXEC flag, so the FD will be kept open when exec is called for the
         // child.
-        fcntl(*fd, FcntlArg::F_SETFD(FdFlag::empty())).map_err(nix_to_io_error)?;
+        fcntl(*fd, FcntlArg::F_SETFD(FdFlag::empty()))?;
     }
 
     Ok(())
-}
-
-/// Convert a [`nix::Error`] to a [`std::io::Error`].
-fn nix_to_io_error(error: nix::Error) -> io::Error {
-    if let nix::Error::Sys(errno) = error {
-        io::Error::from_raw_os_error(errno as i32)
-    } else {
-        io::Error::new(ErrorKind::Other, error)
-    }
 }
 
 #[cfg(test)]
