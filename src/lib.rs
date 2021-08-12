@@ -276,6 +276,7 @@ mod tests {
         let file = File::open("testdata/file1.txt").unwrap();
         let file_fd = file.as_raw_fd();
         command.preserved_fds(vec![file_fd]);
+        assert!(file_fd > 3);
 
         let output = command.output().unwrap();
         expect_fds(&output, &[0, 1, 2, 3, file_fd], 0);
