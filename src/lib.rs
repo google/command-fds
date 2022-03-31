@@ -48,6 +48,9 @@
 //! child.wait().unwrap();
 //! ```
 
+#[cfg(feature = "tokio")]
+pub mod tokio;
+
 use nix::fcntl::{fcntl, FcntlArg, FdFlag};
 use nix::unistd::dup2;
 use std::cmp::max;
@@ -90,13 +93,7 @@ impl CommandFdExt for Command {
         &mut self,
         mut mappings: Vec<FdMapping>,
     ) -> Result<&mut Self, FdMappingCollision> {
-        // Validate that there are no conflicting mappings to the same child FD.
-        let mut child_fds: Vec<RawFd> = mappings.iter().map(|mapping| mapping.child_fd).collect();
-        child_fds.sort_unstable();
-        child_fds.dedup();
-        if child_fds.len() != mappings.len() {
-            return Err(FdMappingCollision);
-        }
+        let child_fds = validate_child_fds(&mappings)?;
 
         // Register the callback to apply the mappings after forking but before execing.
         // Safety: `map_fds` will not allocate, so it is safe to call from this hook.
@@ -118,6 +115,17 @@ impl CommandFdExt for Command {
 
         self
     }
+}
+
+/// Validates that there are no conflicting mappings to the same child FD.
+fn validate_child_fds(mappings: &[FdMapping]) -> Result<Vec<RawFd>, FdMappingCollision> {
+    let mut child_fds: Vec<RawFd> = mappings.iter().map(|mapping| mapping.child_fd).collect();
+    child_fds.sort_unstable();
+    child_fds.dedup();
+    if child_fds.len() != mappings.len() {
+        return Err(FdMappingCollision);
+    }
+    Ok(child_fds)
 }
 
 // This function must not do any allocation, as it is called from the pre_exec hook.
