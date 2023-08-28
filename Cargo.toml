@@ -10,7 +10,7 @@ keywords = ["command", "process", "child", "subprocess", "fd"]
 categories = ["os::unix-apis"]
 
 [dependencies]
-nix = "0.26.2"
+nix = { version = "0.27.0", features = ["fs"] }
 thiserror = "1.0.24"
 
 [dependencies.tokio-crate]
