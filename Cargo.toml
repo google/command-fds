@@ -10,15 +10,9 @@ keywords = ["command", "process", "child", "subprocess", "fd"]
 categories = ["os::unix-apis"]
 
 [dependencies]
-nix = "0.26.2"
+nix = { version = "0.27.0", features = ["fs"] }
 thiserror = "1.0.24"
-
-[dependencies.tokio-crate]
-package = "tokio"
-version = "^1.0"
-optional = true
-default-features = false
-features = ["process"]
+tokio-crate = { package = "tokio", version = "1.32.0", optional = true, default-features = false, features = ["process"] }
 
 [features]
 default = []
