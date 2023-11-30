@@ -296,7 +296,7 @@ mod tests {
         let file = File::open("testdata/file1.txt").unwrap();
         let file_fd: OwnedFd = file.into();
         let raw_file_fd = file_fd.as_raw_fd();
-        assert!(raw_file_fd > 3);
+        assert!(raw_file_fd > 2);
         command.preserved_fds(vec![file_fd]);
 
         let output = command.output().unwrap();
@@ -419,7 +419,7 @@ mod tests {
         for entry in dir {
             let entry = entry.unwrap();
             let fd: RawFd = entry.file_name().to_str().unwrap().parse().unwrap();
-            if fd > 3 {
+            if fd > 2 {
                 close(fd).unwrap();
             }
         }
