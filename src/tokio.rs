@@ -1,5 +1,4 @@
-use std::os::unix::prelude::RawFd;
-
+use std::os::fd::OwnedFd;
 use tokio::process::Command;
 use tokio_crate as tokio;
 
@@ -17,7 +16,7 @@ pub trait CommandFdAsyncExt {
 
     /// Adds the given set of file descriptors to be passed on to the child process when the command
     /// is run.
-    fn preserved_fds(&mut self, fds: Vec<RawFd>) -> &mut Self;
+    fn preserved_fds(&mut self, fds: Vec<OwnedFd>) -> &mut Self;
 }
 
 impl CommandFdAsyncExt for Command {
@@ -34,7 +33,7 @@ impl CommandFdAsyncExt for Command {
         Ok(self)
     }
 
-    fn preserved_fds(&mut self, fds: Vec<RawFd>) -> &mut Self {
+    fn preserved_fds(&mut self, fds: Vec<OwnedFd>) -> &mut Self {
         unsafe {
             self.pre_exec(move || preserve_fds(&fds));
         }
