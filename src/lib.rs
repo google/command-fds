@@ -416,11 +416,16 @@ mod tests {
     /// This is necessary because GitHub Actions opens a bunch of others for some reason.
     fn close_excess_fds() {
         let dir = read_dir("/proc/self/fd").unwrap();
-        for entry in dir {
-            let entry = entry.unwrap();
-            let fd: RawFd = entry.file_name().to_str().unwrap().parse().unwrap();
+        let fds: Vec<RawFd> = dir
+            .map(|entry| {
+                let entry = entry.unwrap();
+                entry.file_name().to_str().unwrap().parse().unwrap()
+            })
+            .collect();
+        for fd in fds {
             if fd > 2 {
-                close(fd).unwrap();
+                // Ignore errors, as the file may already be closed.
+                let _ = close(fd);
             }
         }
     }
