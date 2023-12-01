@@ -87,10 +87,16 @@ pub trait CommandFdExt {
     /// In particular, it is not possible to check that two mappings applied separately don't use
     /// the same `child_fd`. If there is such a collision then one will apply and the other will be
     /// lost.
+    ///
+    /// Note that the `Command` takes ownership of the file descriptors, which means that they won't
+    /// be closed in the parent process until the `Command` is dropped.
     fn fd_mappings(&mut self, mappings: Vec<FdMapping>) -> Result<&mut Self, FdMappingCollision>;
 
     /// Adds the given set of file descriptors to be passed on to the child process when the command
     /// is run.
+    ///
+    /// Note that the `Command` takes ownership of the file descriptors, which means that they won't
+    /// be closed in the parent process until the `Command` is dropped.
     fn preserved_fds(&mut self, fds: Vec<OwnedFd>) -> &mut Self;
 }
 
