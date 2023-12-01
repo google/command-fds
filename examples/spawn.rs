@@ -14,7 +14,8 @@
 
 use command_fds::{CommandFdExt, FdMapping};
 use std::fs::{read_dir, read_link, File};
-use std::os::unix::io::AsRawFd;
+use std::io::stdin;
+use std::os::fd::AsFd;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 use std::thread::sleep;
@@ -40,17 +41,18 @@ fn main() {
 
     // Prepare to run `ls -l /proc/self/fd` with some FDs mapped.
     let mut command = Command::new("ls");
+    let stdin = stdin().as_fd().try_clone_to_owned().unwrap();
     command.arg("-l").arg("/proc/self/fd");
     command
         .fd_mappings(vec![
             // Map `file` as FD 3 in the child process.
             FdMapping {
-                parent_fd: file.as_raw_fd(),
+                parent_fd: file.into(),
                 child_fd: 3,
             },
             // Map this process's stdin as FD 5 in the child process.
             FdMapping {
-                parent_fd: 0,
+                parent_fd: stdin,
                 child_fd: 5,
             },
         ])
