@@ -1,6 +1,6 @@
 [package]
 name = "command-fds"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2018"
 authors = ["Andrew Walbran <qwandor@google.com>"]
 license = "Apache-2.0"
@@ -12,7 +12,9 @@ categories = ["os::unix-apis"]
 [dependencies]
 nix = { version = "0.27.0", features = ["fs"] }
 thiserror = "1.0.24"
-tokio-crate = { package = "tokio", version = "1.32.0", optional = true, default-features = false, features = ["process"] }
+tokio-crate = { package = "tokio", version = "1.32.0", optional = true, default-features = false, features = [
+  "process",
+] }
 
 [features]
 default = []
