@@ -54,10 +54,10 @@
 pub mod tokio;
 
 use nix::fcntl::{fcntl, FcntlArg, FdFlag};
-use nix::unistd::dup2;
+use nix::unistd::dup2_raw;
 use std::cmp::max;
 use std::io;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
 use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
@@ -163,10 +163,7 @@ fn map_fds(mappings: &mut [FdMapping], child_fds: &[RawFd]) -> io::Result<()> {
         if child_fds.contains(&mapping.parent_fd.as_raw_fd())
             && mapping.parent_fd.as_raw_fd() != mapping.child_fd
         {
-            let parent_fd = fcntl(
-                mapping.parent_fd.as_raw_fd(),
-                FcntlArg::F_DUPFD_CLOEXEC(first_safe_fd),
-            )?;
+            let parent_fd = fcntl(&mapping.parent_fd, FcntlArg::F_DUPFD_CLOEXEC(first_safe_fd))?;
             // SAFETY: We just created `parent_fd` so we can take ownership of it.
             unsafe {
                 mapping.parent_fd = OwnedFd::from_raw_fd(parent_fd);
@@ -179,14 +176,16 @@ fn map_fds(mappings: &mut [FdMapping], child_fds: &[RawFd]) -> io::Result<()> {
         if mapping.child_fd == mapping.parent_fd.as_raw_fd() {
             // Remove the FD_CLOEXEC flag, so the FD will be kept open when exec is called for the
             // child.
-            fcntl(
-                mapping.parent_fd.as_raw_fd(),
-                FcntlArg::F_SETFD(FdFlag::empty()),
-            )?;
+            fcntl(&mapping.parent_fd, FcntlArg::F_SETFD(FdFlag::empty()))?;
         } else {
             // This closes child_fd if it is already open as something else, and clears the
             // FD_CLOEXEC flag on child_fd.
-            dup2(mapping.parent_fd.as_raw_fd(), mapping.child_fd)?;
+            // SAFETY: `dup2_raw` returns an `OwnedFd` which takes ownership of the child FD and
+            // would close it when it is dropped. We avoid this by calling `into_raw_fd` to give up
+            // ownership again.
+            unsafe {
+                let _ = dup2_raw(&mapping.parent_fd, mapping.child_fd)?.into_raw_fd();
+            }
         }
     }
 
@@ -197,7 +196,7 @@ fn preserve_fds(fds: &[OwnedFd]) -> io::Result<()> {
     for fd in fds {
         // Remove the FD_CLOEXEC flag, so the FD will be kept open when exec is called for the
         // child.
-        fcntl(fd.as_raw_fd(), FcntlArg::F_SETFD(FdFlag::empty()))?;
+        fcntl(fd, FcntlArg::F_SETFD(FdFlag::empty()))?;
     }
 
     Ok(())
