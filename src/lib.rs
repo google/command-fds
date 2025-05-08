@@ -53,7 +53,7 @@
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
-use nix::fcntl::{fcntl, FcntlArg, FdFlag};
+use nix::fcntl::{FcntlArg, FdFlag, fcntl};
 use nix::unistd::dup2_raw;
 use std::cmp::max;
 use std::io;
@@ -207,7 +207,7 @@ mod tests {
     use super::*;
     use nix::unistd::close;
     use std::collections::HashSet;
-    use std::fs::{read_dir, File};
+    use std::fs::{File, read_dir};
     use std::os::unix::io::AsRawFd;
     use std::process::Output;
     use std::str;
@@ -225,18 +225,20 @@ mod tests {
         let file2 = File::open("testdata/file2.txt").unwrap();
 
         // Mapping two different FDs to the same FD isn't allowed.
-        assert!(command
-            .fd_mappings(vec![
-                FdMapping {
-                    child_fd: 4,
-                    parent_fd: file1.into(),
-                },
-                FdMapping {
-                    child_fd: 4,
-                    parent_fd: file2.into(),
-                },
-            ])
-            .is_err());
+        assert!(
+            command
+                .fd_mappings(vec![
+                    FdMapping {
+                        child_fd: 4,
+                        parent_fd: file1.into(),
+                    },
+                    FdMapping {
+                        child_fd: 4,
+                        parent_fd: file2.into(),
+                    },
+                ])
+                .is_err()
+        );
     }
 
     #[test]
@@ -274,12 +276,14 @@ mod tests {
 
         let file = File::open("testdata/file1.txt").unwrap();
         // Map the file an otherwise unused FD.
-        assert!(command
-            .fd_mappings(vec![FdMapping {
-                parent_fd: file.into(),
-                child_fd: 5,
-            },])
-            .is_ok());
+        assert!(
+            command
+                .fd_mappings(vec![FdMapping {
+                    parent_fd: file.into(),
+                    child_fd: 5,
+                },])
+                .is_ok()
+        );
 
         let output = command.output().unwrap();
         expect_fds(&output, &[0, 1, 2, 3, 5], 0);
@@ -317,18 +321,20 @@ mod tests {
         let fd1_raw = fd1.as_raw_fd();
         let fd2_raw = fd2.as_raw_fd();
         // Map files to each other's FDs, to ensure that the temporary FD logic works.
-        assert!(command
-            .fd_mappings(vec![
-                FdMapping {
-                    parent_fd: fd1,
-                    child_fd: fd2_raw,
-                },
-                FdMapping {
-                    parent_fd: fd2,
-                    child_fd: fd1_raw,
-                },
-            ])
-            .is_ok(),);
+        assert!(
+            command
+                .fd_mappings(vec![
+                    FdMapping {
+                        parent_fd: fd1,
+                        child_fd: fd2_raw,
+                    },
+                    FdMapping {
+                        parent_fd: fd2,
+                        child_fd: fd1_raw,
+                    },
+                ])
+                .is_ok(),
+        );
 
         let output = command.output().unwrap();
         // Expect one more Fd for the /proc/self/fd directory. We can't predict what number it will
@@ -348,12 +354,14 @@ mod tests {
         let fd1: OwnedFd = file1.into();
         let fd1_raw = fd1.as_raw_fd();
         // Map file1 to the same FD it currently has, to ensure the special case for that works.
-        assert!(command
-            .fd_mappings(vec![FdMapping {
-                parent_fd: fd1,
-                child_fd: fd1_raw,
-            }])
-            .is_ok());
+        assert!(
+            command
+                .fd_mappings(vec![FdMapping {
+                    parent_fd: fd1,
+                    child_fd: fd1_raw,
+                }])
+                .is_ok()
+        );
 
         let output = command.output().unwrap();
         // Expect one more Fd for the /proc/self/fd directory. We can't predict what number it will
@@ -372,12 +380,14 @@ mod tests {
 
         let file = File::open("testdata/file1.txt").unwrap();
         // Map the file to stdin.
-        assert!(command
-            .fd_mappings(vec![FdMapping {
-                parent_fd: file.into(),
-                child_fd: 0,
-            },])
-            .is_ok());
+        assert!(
+            command
+                .fd_mappings(vec![FdMapping {
+                    parent_fd: file.into(),
+                    child_fd: 0,
+                },])
+                .is_ok()
+        );
 
         let output = command.output().unwrap();
         assert!(output.status.success());
