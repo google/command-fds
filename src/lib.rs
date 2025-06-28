@@ -300,7 +300,7 @@ mod tests {
         let file = File::open("testdata/file1.txt").unwrap();
         let file_fd: OwnedFd = file.into();
         let raw_file_fd = file_fd.as_raw_fd();
-        assert!(raw_file_fd > 3);
+        assert!(raw_file_fd > 2);
         command.preserved_fds(vec![file_fd]);
 
         let output = command.output().unwrap();
@@ -426,11 +426,16 @@ mod tests {
     /// This is necessary because GitHub Actions opens a bunch of others for some reason.
     fn close_excess_fds() {
         let dir = read_dir("/proc/self/fd").unwrap();
-        for entry in dir {
-            let entry = entry.unwrap();
-            let fd: RawFd = entry.file_name().to_str().unwrap().parse().unwrap();
-            if fd > 3 {
-                close(fd).unwrap();
+        let fds: Vec<RawFd> = dir
+            .map(|entry| {
+                let entry = entry.unwrap();
+                entry.file_name().to_str().unwrap().parse().unwrap()
+            })
+            .collect();
+        for fd in fds {
+            if fd > 2 {
+                // Ignore errors, as the file may already be closed.
+                let _ = close(fd);
             }
         }
     }
