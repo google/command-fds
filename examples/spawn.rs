@@ -21,13 +21,13 @@ use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
 
-/// Print out a list of all open file descriptors.
+/// Prints out a list of all open file descriptors.
 fn list_fds() {
     let dir = read_dir("/proc/self/fd").unwrap();
     for entry in dir {
         let entry = entry.unwrap();
         let target = read_link(entry.path()).unwrap();
-        println!("{:?} {:?}", entry, target);
+        println!("{:?} -> {:?}", entry.file_name(), target);
     }
 }
 
@@ -41,8 +41,8 @@ fn main() {
 
     // Prepare to run `ls -l /proc/self/fd` with some FDs mapped.
     let mut command = Command::new("ls");
-    let stdin = stdin().as_fd().try_clone_to_owned().unwrap();
     command.arg("-l").arg("/proc/self/fd");
+    let stdin_fd = stdin().as_fd().try_clone_to_owned().unwrap();
     command
         .fd_mappings(vec![
             // Map `file` as FD 3 in the child process.
@@ -52,13 +52,13 @@ fn main() {
             },
             // Map this process's stdin as FD 5 in the child process.
             FdMapping {
-                parent_fd: stdin,
+                parent_fd: stdin_fd,
                 child_fd: 5,
             },
         ])
         .unwrap();
     unsafe {
-        command.pre_exec(move || {
+        command.pre_exec(|| {
             println!("pre_exec");
             list_fds();
             Ok(())
