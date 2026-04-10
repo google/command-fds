@@ -50,6 +50,7 @@
 //! child.wait().unwrap();
 //! ```
 
+pub mod inherited;
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
