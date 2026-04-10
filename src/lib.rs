@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A library for passing arbitrary file descriptors when spawning child processes.
+//! A library for passing arbitrary file descriptors when spawning child processes, and safely
+//! taking ownership of passed file descriptors within such a child process.
 //!
 //! # Example
 //!
-//! ```rust
+//! In the parent process:
+//!
+//! ```
 //! use command_fds::{CommandFdExt, FdMapping};
 //! use std::fs::File;
 //! use std::io::stdin;
@@ -49,7 +52,30 @@
 //! let mut child = command.spawn().unwrap();
 //! child.wait().unwrap();
 //! ```
+//!
+//! In the child process:
+//!
+//! ```no_run
+//! use command_fds::inherited::{init_inherited_fds, take_fd_ownership};
+//!
+//! fn main() {
+//!     // SAFETY: This is called before anything else in the program.
+//!     unsafe {
+//!         init_inherited_fds();
+//!     }
+//!
+//!     // Get an OwnedFd for the file that was passed as FD 3 by the parent.
+//!     let inherited_file = take_fd_ownership(3).unwrap();
+//!
+//!     // Trying to take the same file descriptor again will return an error.
+//!     take_fd_ownership(3).expect_err("Can't take the same FD twice");
+//!
+//!     // Trying to take a file descriptor which wasn't passed will also return an error.
+//!     take_fd_ownership(4).expect_err("Can't take an FD which wasn't inherited");
+//! }
+//! ```
 
+pub mod inherited;
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
