@@ -157,6 +157,8 @@ mod test {
     }
 
     fn is_fd_opened(raw_fd: RawFd) -> bool {
+        // SAFETY: F_GETFD doesn't take any other parameters, and is safe even on an invalid file
+        // descriptor.
         unsafe { libc::fcntl(raw_fd, libc::F_GETFD) != -1 }
     }
 
@@ -270,6 +272,7 @@ mod test {
         let fixture = Fixture::setup(2).unwrap();
         let f = fixture.fds[0];
 
+        // SAFETY: 0 is a valid parameter for F_SETFD.
         let res = unsafe { libc::fcntl(f.as_raw_fd(), libc::F_SETFD, 0) };
         assert_ne!(res, -1);
 
