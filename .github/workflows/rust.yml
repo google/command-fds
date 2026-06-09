@@ -46,7 +46,7 @@ jobs:
       - name: Run tests with coverage
         run: cargo llvm-cov nextest --all-features --codecov --output-path codecov-report.json
       - name: Upload coverage to codecov.io
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           fail_ci_if_error: true
           files: codecov-report.json
